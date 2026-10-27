@@ -18,6 +18,11 @@ export const HUMAN_PRESETS = {
   "human-deep":  { skin: 0x6b4226, nail: 0x84583a, hair: 0x0b0706, cloth: 0x3b3f8c },
 };
 
+// Fingers curl towards the palm. The palm is on the hand's +z side (nails on -z), so a positive
+// curl value from the pose library has to be a NEGATIVE x rotation in three.js. (Arm joints need
+// no flip: the skeleton is modelled facing -z, where a positive x swings the arm forward.)
+const FINGER_FLEX = -1;
+
 // Facial expression targets: brow tilt (inner-end down is +), brow lift, mouth curve
 // (+smile / -frown), mouth open, eye squint. Used by _updateFace().
 const EXPRESSIONS = {
@@ -32,6 +37,9 @@ export class HumanoidAvatar {
   constructor(scene, options = {}) {
     this.scene = scene;
     this.group = new THREE.Group();
+    // The skeleton (and the pose library) is modelled facing -z; turn the whole figure around so
+    // it faces the camera. Rotating (not mirroring) keeps left/right hands anatomically correct.
+    this.group.rotation.y = Math.PI;
     this.scene.add(this.group);
 
     this.currentStyle = options.style || "human-tan"; // human-*, "pro-hands", "natural", "cyber", "high-contrast"
@@ -223,7 +231,7 @@ export class HumanoidAvatar {
       this.materials.suitAccent
     );
     badge.rotation.x = Math.PI / 2;
-    badge.position.set(0, 0.22, 0.26);
+    badge.position.set(0, 0.22, -0.26);
     this.chestJoint.add(badge);
 
     // 3. Neck & Head
@@ -242,6 +250,12 @@ export class HumanoidAvatar {
     this.headJoint.position.set(0, 0.18, 0);
     this.neckJoint.add(this.headJoint);
 
+    // The head's features (face, visor) are modelled on +z; this wrapper turns them to the
+    // skeleton's front (-z) so the head can be posed in plain "facing forward" terms.
+    this.headFront = new THREE.Group();
+    this.headFront.rotation.y = Math.PI;
+    this.headJoint.add(this.headFront);
+
     // Head Base Shape (Smooth stylized faceless mannequin head)
     const headMesh = new THREE.Mesh(
       new THREE.SphereGeometry(0.22, 28, 28),
@@ -257,7 +271,7 @@ export class HumanoidAvatar {
     const visor = new THREE.Mesh(visorGeo, this.materials.suitAccent);
     visor.position.set(0, 0.22, 0.14);
     visor.rotation.x = -0.1;
-    this.headJoint.add(visor);
+    this.headFront.add(visor);
     this.techParts = [leftStripe, rightStripe, badge, visor]; // hidden for human styles
     this._buildFace();
 
@@ -276,7 +290,7 @@ export class HumanoidAvatar {
   _buildFace() {
     const M = this.materials;
     const group = new THREE.Group();
-    this.headJoint.add(group);
+    this.headFront.add(group);
 
     // Eyes (blink by squashing scale.y)
     const makeEye = (x) => {
@@ -644,11 +658,18 @@ export class HumanoidAvatar {
   }
 
   /**
-   * Set target pose for smooth interpolation
+   * Set target pose for smooth interpolation.
+   *
+   * Poses may be partial (e.g. a keyframe that only moves the right forearm). Joints a pose
+   * leaves out are taken from a base pose so nothing gets stuck from a previous sign:
+   *  - fromIdle = true  (first keyframe of a sign / a fingerspelled letter): base is the idle
+   *    pose, so the other arm and head return to rest.
+   *  - fromIdle = false (later keyframes of the same sign): base is the previous target.
    */
-  setPose(targetPose, transitionTime = 0.3) {
+  setPose(targetPose, transitionTime = 0.3, { fromIdle = true } = {}) {
+    const base = fromIdle ? DEFAULT_IDLE_POSE : this.targetPose;
     this.previousPose = JSON.parse(JSON.stringify(this.currentPose));
-    this.targetPose = JSON.parse(JSON.stringify(targetPose));
+    this.targetPose = JSON.parse(JSON.stringify({ ...base, ...targetPose }));
     this.transitionTime = Math.max(0.08, transitionTime);
     this.transitionProgress = 0.0;
   }
@@ -657,7 +678,7 @@ export class HumanoidAvatar {
    * Return to natural resting idle pose
    */
   resetToIdle(transitionTime = 0.35) {
-    this.setPose(DEFAULT_IDLE_POSE, transitionTime);
+    this.setPose(DEFAULT_IDLE_POSE, transitionTime, { fromIdle: true });
   }
 
   /**
@@ -710,81 +731,37 @@ export class HumanoidAvatar {
     }
 
     if (this.headJoint && this.currentPose.head) {
+      // Head angles are authored for a figure facing +z; the skeleton faces -z, so nod (x) and
+      // tilt (z) change sign (a turn about the vertical axis keeps its sign).
       this.headJoint.rotation.set(
-        this.currentPose.head.x + breath * 0.5,
+        -(this.currentPose.head.x + breath * 0.5),
         this.currentPose.head.y,
-        this.currentPose.head.z
+        -this.currentPose.head.z
       );
     }
 
-    // Left Arm Hierarchy
-    if (this.leftArm) {
-      if (this.currentPose.leftShoulder) {
-        this.leftArm.shoulderJoint.rotation.set(
-          this.currentPose.leftShoulder.x,
-          this.currentPose.leftShoulder.y,
-          this.currentPose.leftShoulder.z
-        );
-      }
-      if (this.currentPose.leftArm) {
-        this.leftArm.upperArmJoint.rotation.set(
-          this.currentPose.leftArm.x,
-          this.currentPose.leftArm.y,
-          this.currentPose.leftArm.z
-        );
-      }
-      if (this.currentPose.leftForearm) {
-        this.leftArm.elbowJoint.rotation.set(
-          this.currentPose.leftForearm.x,
-          this.currentPose.leftForearm.y,
-          this.currentPose.leftForearm.z
-        );
-      }
-      if (this.currentPose.leftHand) {
-        this.leftArm.wristJoint.rotation.set(
-          this.currentPose.leftHand.x,
-          this.currentPose.leftHand.y,
-          this.currentPose.leftHand.z
-        );
-      }
-      this._applyPrecisionFingerRotations(this.leftArm.fingers, this.currentPose.leftFingers, true);
-    }
-
-    // Right Arm Hierarchy
-    if (this.rightArm) {
-      if (this.currentPose.rightShoulder) {
-        this.rightArm.shoulderJoint.rotation.set(
-          this.currentPose.rightShoulder.x,
-          this.currentPose.rightShoulder.y,
-          this.currentPose.rightShoulder.z
-        );
-      }
-      if (this.currentPose.rightArm) {
-        this.rightArm.upperArmJoint.rotation.set(
-          this.currentPose.rightArm.x,
-          this.currentPose.rightArm.y,
-          this.currentPose.rightArm.z
-        );
-      }
-      if (this.currentPose.rightForearm) {
-        this.rightArm.elbowJoint.rotation.set(
-          this.currentPose.rightForearm.x,
-          this.currentPose.rightForearm.y,
-          this.currentPose.rightForearm.z
-        );
-      }
-      if (this.currentPose.rightHand) {
-        this.rightArm.wristJoint.rotation.set(
-          this.currentPose.rightHand.x,
-          this.currentPose.rightHand.y,
-          this.currentPose.rightHand.z
-        );
-      }
-      this._applyPrecisionFingerRotations(this.rightArm.fingers, this.currentPose.rightFingers, false);
-    }
+    // Arms (shoulder -> upper arm -> elbow -> wrist -> fingers)
+    this._applyArm(this.leftArm, "left", true);
+    this._applyArm(this.rightArm, "right", false);
 
     // 3. Facial expression, blinking (human styles)
     this._updateFace(deltaTime);
+  }
+
+  /**
+   * Applies the current pose to one arm (shoulder -> upper arm -> elbow -> wrist -> fingers).
+   */
+  _applyArm(arm, side, isLeft) {
+    if (!arm) return;
+    const p = this.currentPose;
+    const set = (joint, r) => {
+      if (r) joint.rotation.set(r.x, r.y, r.z);
+    };
+    set(arm.shoulderJoint, p[`${side}Shoulder`]);
+    set(arm.upperArmJoint, p[`${side}Arm`]);
+    set(arm.elbowJoint, p[`${side}Forearm`]);
+    set(arm.wristJoint, p[`${side}Hand`]);
+    this._applyPrecisionFingerRotations(arm.fingers, p[`${side}Fingers`], isLeft);
   }
 
   /**
@@ -803,23 +780,25 @@ export class HumanoidAvatar {
 
       if (name === "thumb") {
         // Thumb Opposability & Flexion
-        f.base.rotation.x = curl1;
-        f.base.rotation.z = (isLeft ? -0.55 : 0.55) + curl1 * 0.3;
-        f.tip.rotation.x = curl2;
+        // angles[2] = how far the thumb is swung out from the palm (L, Y, thumbs-up ...)
+        const out = angles[2] || 0;
+        f.base.rotation.x = FINGER_FLEX * curl1;
+        f.base.rotation.z = (isLeft ? -0.55 : 0.55) + curl1 * 0.3 + (isLeft ? out : -out);
+        f.tip.rotation.x = FINGER_FLEX * curl2;
       } else {
         // 4 Fingers (Index, Middle, Ring, Pinky)
         // MCP Knuckle flexion + abduction spread
-        f.base.rotation.x = curl1;
+        f.base.rotation.x = FINGER_FLEX * curl1;
         f.base.rotation.z = splay;
 
         // PIP middle joint flexion
         if (f.mid) {
-          f.mid.rotation.x = curl2;
+          f.mid.rotation.x = FINGER_FLEX * curl2;
         }
 
         // DIP fingertip joint flexion (coupled with PIP for natural curve)
         if (f.tip && f.tip !== f.mid) {
-          f.tip.rotation.x = curl2 * 0.75;
+          f.tip.rotation.x = FINGER_FLEX * curl2 * 0.75;
         }
       }
     }

@@ -1,8 +1,19 @@
 /**
  * 3D SKELETAL POSES & SIGN ANIMATION LIBRARY
- * 
+ *
  * Defines forward-kinematics joint rotation targets and keyframe sequences
  * for 3D Sign Language synthesis and fingerspelling.
+ *
+ * COORDINATE CONVENTION (all angles in radians)
+ *  - The skeleton is modelled facing local -z, with its "right" arm on local +x. For arm, forearm,
+ *    shoulder and wrist joints a POSITIVE x is forward flexion (arm raised forward, elbow bent).
+ *    HumanoidAvatar rotates the whole figure by PI about y so it faces the camera; the signer's
+ *    right hand therefore appears on the viewer's LEFT, like a real signer facing you.
+ *  - head: x = nod (positive looks down), y = turn, z = tilt, measured from "facing forward".
+ *    The engine converts these into the skeleton's frame, so head: {0,0,0} is looking at the viewer.
+ *  - Finger entries are [mcpCurl, pipCurl, optionalThird]; positive curl bends towards the palm.
+ *    For index..pinky the third value is sideways splay; for the thumb it is how far the thumb is
+ *    swung OUT from the palm (L, Y, thumbs-up).
  */
 
 // Common Handshape Configurations
@@ -57,7 +68,7 @@ export const HAND_SHAPES = {
     pinky: [1.5, 1.4],
   },
   THUMB_UP: {
-    thumb: [-0.4, 0.3],
+    thumb: [-0.4, 0.3, 1.3],
     index: [1.5, 1.4],
     middle: [1.5, 1.4],
     ring: [1.5, 1.4],
@@ -78,21 +89,21 @@ export const HAND_SHAPES = {
     pinky: [0.3, 0.1],
   },
   L_SHAPE: {
-    thumb: [-0.4, 0.8],
+    thumb: [0.1, 0.0, 1.5],      // thumb out at right angles to the index finger
     index: [0.0, 0.0],
     middle: [1.5, 1.4],
     ring: [1.5, 1.4],
     pinky: [1.5, 1.4],
   },
   Y_SHAPE: {
-    thumb: [-0.5, 0.7],
+    thumb: [0.1, 0.0, 1.5],
     index: [1.5, 1.4],
     middle: [1.5, 1.4],
     ring: [1.5, 1.4],
-    pinky: [0.0, 0.5],
+    pinky: [0.0, 0.0],
   },
   I_LOVE_YOU: {
-    thumb: [-0.5, 0.6],
+    thumb: [0.1, 0.0, 1.3],
     index: [0.0, 0.0],
     middle: [1.5, 1.4],
     ring: [1.5, 1.4],
@@ -102,7 +113,7 @@ export const HAND_SHAPES = {
 
 // Default Resting Idle Pose
 export const DEFAULT_IDLE_POSE = {
-  head: { x: 0, y: Math.PI, z: 0 },
+  head: { x: 0, y: 0, z: 0 }, // looking at the viewer (the engine handles the figure's facing)
   neck: { x: 0, y: 0, z: 0 },
   spine: { x: 0, y: 0, z: 0 },
   chest: { x: 0, y: 0, z: 0 },
@@ -120,278 +131,160 @@ export const DEFAULT_IDLE_POSE = {
   mouthOpen: 0,
 };
 
-// Full A-Z Fingerspelling Dictionary
+// Fingerspelling is signed beside the shoulder: hand in front of the shoulder, fingers up,
+// palm towards the viewer. These arm/hand values were solved with a forward-kinematics check
+// (wrist ~ (-0.30, 0.52, 0.32) in world space, fingers up, palm facing the camera).
+const FS_ARM = {
+  rightArm: { x: 0.81, y: 0.45, z: 0.4 },
+  rightForearm: { x: 2.21, y: -0.5, z: 0.3 },
+};
+const FS_HAND = { x: 0.25, y: 0.44, z: 0.32 };            // palm to viewer, fingers up
+const FS_HAND_SIDEWAYS = { x: 0.21, y: 0.45, z: -1.24 };  // G, H: fingers point across the body
+const FS_HAND_DOWN = { x: -0.77, y: -1.57, z: 1.52 };     // P, Q: fingers point down/forward
+const fs = (rightFingers, rightHand = FS_HAND) => ({ ...FS_ARM, rightHand, rightFingers });
+
+// Full A-Z Fingerspelling Dictionary (hand shapes only; the position above is shared)
 export const FINGERSPELL_POSES = {
-  A: {
-    rightArm: { x: 0.3, y: 0.1, z: 0.45 },
-    rightForearm: { x: 1.4, y: 0.3, z: -0.6 },
-    rightHand: { x: 0.1, y: -0.2, z: 0.1 },
-    rightFingers: {
+  A: fs({
       thumb: [0.1, 0.6],
       index: [1.5, 1.4],
       middle: [1.5, 1.4],
       ring: [1.5, 1.4],
       pinky: [1.5, 1.4],
-    },
-  },
-  B: {
-    rightArm: { x: 0.3, y: 0.1, z: 0.45 },
-    rightForearm: { x: 1.4, y: 0.3, z: -0.6 },
-    rightHand: { x: 0.1, y: -0.2, z: 0.1 },
-    rightFingers: {
+    }),
+  B: fs({
       thumb: [1.1, -0.2],
       index: [0.0, 0.0],
       middle: [0.0, 0.0],
       ring: [0.0, 0.0],
       pinky: [0.0, 0.0],
-    },
-  },
-  C: {
-    rightArm: { x: 0.3, y: 0.1, z: 0.45 },
-    rightForearm: { x: 1.3, y: 0.4, z: -0.5 },
-    rightHand: { x: 0.0, y: -0.6, z: 0.2 },
-    rightFingers: HAND_SHAPES.CUP,
-  },
-  D: {
-    rightArm: { x: 0.3, y: 0.1, z: 0.45 },
-    rightForearm: { x: 1.4, y: 0.3, z: -0.6 },
-    rightHand: { x: 0.1, y: -0.2, z: 0.1 },
-    rightFingers: {
+    }),
+  C: fs(HAND_SHAPES.CUP),
+  D: fs({
       thumb: [0.8, 0.2],
       index: [0.0, 0.0],
       middle: [1.1, 1.0],
       ring: [1.2, 1.1],
       pinky: [1.3, 1.2],
-    },
-  },
-  E: {
-    rightArm: { x: 0.3, y: 0.1, z: 0.45 },
-    rightForearm: { x: 1.4, y: 0.3, z: -0.6 },
-    rightHand: { x: 0.1, y: -0.2, z: 0.1 },
-    rightFingers: {
+    }),
+  E: fs({
       thumb: [1.0, 0.0],
       index: [1.2, 1.1],
       middle: [1.2, 1.1],
       ring: [1.2, 1.1],
       pinky: [1.2, 1.1],
-    },
-  },
-  F: {
-    rightArm: { x: 0.3, y: 0.1, z: 0.45 },
-    rightForearm: { x: 1.4, y: 0.3, z: -0.6 },
-    rightHand: { x: 0.1, y: -0.2, z: 0.1 },
-    rightFingers: HAND_SHAPES.PINCH,
-  },
-  G: {
-    rightArm: { x: 0.4, y: 0.2, z: 0.4 },
-    rightForearm: { x: 1.2, y: 0.6, z: -0.4 },
-    rightHand: { x: 0.0, y: -1.2, z: 0.3 },
-    rightFingers: {
-      thumb: [0.1, 0.6],
+    }),
+  F: fs(HAND_SHAPES.PINCH),
+  G: fs({
+      thumb: [0.1, 0.0, 0.6],
       index: [0.0, 0.0],
       middle: [1.5, 1.4],
       ring: [1.5, 1.4],
       pinky: [1.5, 1.4],
-    },
-  },
-  H: {
-    rightArm: { x: 0.4, y: 0.2, z: 0.4 },
-    rightForearm: { x: 1.2, y: 0.6, z: -0.4 },
-    rightHand: { x: 0.0, y: -1.2, z: 0.3 },
-    rightFingers: {
-      thumb: [0.1, 0.6],
+    }, FS_HAND_SIDEWAYS),
+  H: fs({
+      thumb: [0.1, 0.0, 0.6],
       index: [0.0, 0.0],
       middle: [0.0, 0.0],
       ring: [1.5, 1.4],
       pinky: [1.5, 1.4],
-    },
-  },
-  I: {
-    rightArm: { x: 0.3, y: 0.1, z: 0.45 },
-    rightForearm: { x: 1.4, y: 0.3, z: -0.6 },
-    rightHand: { x: 0.1, y: -0.2, z: 0.1 },
-    rightFingers: {
+    }, FS_HAND_SIDEWAYS),
+  I: fs({
       thumb: [0.9, 0.2],
       index: [1.5, 1.4],
       middle: [1.5, 1.4],
       ring: [1.5, 1.4],
       pinky: [0.0, 0.0],
-    },
-  },
-  J: {
-    rightArm: { x: 0.3, y: 0.1, z: 0.45 },
-    rightForearm: { x: 1.4, y: 0.3, z: -0.6 },
-    rightHand: { x: 0.4, y: -0.6, z: 0.4 },
-    rightFingers: {
+    }),
+  J: fs({
       thumb: [0.9, 0.2],
       index: [1.5, 1.4],
       middle: [1.5, 1.4],
       ring: [1.5, 1.4],
       pinky: [0.0, 0.0],
-    },
-  },
-  K: {
-    rightArm: { x: 0.3, y: 0.1, z: 0.45 },
-    rightForearm: { x: 1.4, y: 0.3, z: -0.6 },
-    rightHand: { x: 0.1, y: -0.2, z: 0.1 },
-    rightFingers: {
+    }),
+  K: fs({
       thumb: [0.1, 0.5],
       index: [0.0, 0.0],
       middle: [0.4, 0.2],
       ring: [1.5, 1.4],
       pinky: [1.5, 1.4],
-    },
-  },
-  L: {
-    rightArm: { x: 0.3, y: 0.1, z: 0.45 },
-    rightForearm: { x: 1.4, y: 0.3, z: -0.6 },
-    rightHand: { x: 0.1, y: -0.2, z: 0.1 },
-    rightFingers: HAND_SHAPES.L_SHAPE,
-  },
-  M: {
-    rightArm: { x: 0.3, y: 0.1, z: 0.45 },
-    rightForearm: { x: 1.4, y: 0.3, z: -0.6 },
-    rightHand: { x: 0.2, y: -0.3, z: 0.2 },
-    rightFingers: {
+    }),
+  L: fs(HAND_SHAPES.L_SHAPE),
+  M: fs({
       thumb: [0.9, 0.0],
       index: [1.4, 1.2],
       middle: [1.4, 1.2],
       ring: [1.4, 1.2],
       pinky: [1.5, 1.4],
-    },
-  },
-  N: {
-    rightArm: { x: 0.3, y: 0.1, z: 0.45 },
-    rightForearm: { x: 1.4, y: 0.3, z: -0.6 },
-    rightHand: { x: 0.2, y: -0.3, z: 0.2 },
-    rightFingers: {
+    }),
+  N: fs({
       thumb: [0.9, 0.0],
       index: [1.4, 1.2],
       middle: [1.4, 1.2],
       ring: [1.5, 1.4],
       pinky: [1.5, 1.4],
-    },
-  },
-  O: {
-    rightArm: { x: 0.3, y: 0.1, z: 0.45 },
-    rightForearm: { x: 1.3, y: 0.4, z: -0.5 },
-    rightHand: { x: 0.0, y: -0.5, z: 0.2 },
-    rightFingers: {
+    }),
+  O: fs({
       thumb: [0.8, 0.3],
       index: [0.9, 0.8],
       middle: [0.9, 0.8],
       ring: [0.9, 0.8],
       pinky: [0.9, 0.8],
-    },
-  },
-  P: {
-    rightArm: { x: 0.3, y: 0.2, z: 0.45 },
-    rightForearm: { x: 1.1, y: 0.4, z: -0.4 },
-    rightHand: { x: 0.5, y: -0.8, z: 0.3 },
-    rightFingers: {
+    }),
+  P: fs({
       thumb: [0.1, 0.5],
       index: [0.0, 0.0],
       middle: [0.4, 0.2],
       ring: [1.5, 1.4],
       pinky: [1.5, 1.4],
-    },
-  },
-  Q: {
-    rightArm: { x: 0.3, y: 0.2, z: 0.45 },
-    rightForearm: { x: 1.1, y: 0.4, z: -0.4 },
-    rightHand: { x: 0.6, y: -0.9, z: 0.3 },
-    rightFingers: {
+    }, FS_HAND_DOWN),
+  Q: fs({
       thumb: [0.1, 0.6],
       index: [0.0, 0.0],
       middle: [1.5, 1.4],
       ring: [1.5, 1.4],
       pinky: [1.5, 1.4],
-    },
-  },
-  R: {
-    rightArm: { x: 0.3, y: 0.1, z: 0.45 },
-    rightForearm: { x: 1.4, y: 0.3, z: -0.6 },
-    rightHand: { x: 0.1, y: -0.2, z: 0.1 },
-    rightFingers: {
+    }, FS_HAND_DOWN),
+  R: fs({
       thumb: [0.9, 0.1],
       index: [0.0, 0.1],
       middle: [0.0, -0.3], // crossed over index
       ring: [1.5, 1.4],
       pinky: [1.5, 1.4],
-    },
-  },
-  S: {
-    rightArm: { x: 0.3, y: 0.1, z: 0.45 },
-    rightForearm: { x: 1.4, y: 0.3, z: -0.6 },
-    rightHand: { x: 0.1, y: -0.2, z: 0.1 },
-    rightFingers: {
+    }),
+  S: fs({
       thumb: [0.9, -0.1], // thumb folded over front of fist
       index: [1.5, 1.4],
       middle: [1.5, 1.4],
       ring: [1.5, 1.4],
       pinky: [1.5, 1.4],
-    },
-  },
-  T: {
-    rightArm: { x: 0.3, y: 0.1, z: 0.45 },
-    rightForearm: { x: 1.4, y: 0.3, z: -0.6 },
-    rightHand: { x: 0.1, y: -0.2, z: 0.1 },
-    rightFingers: {
+    }),
+  T: fs({
       thumb: [0.7, 0.2], // tucked under index
       index: [1.3, 1.2],
       middle: [1.5, 1.4],
       ring: [1.5, 1.4],
       pinky: [1.5, 1.4],
-    },
-  },
-  U: {
-    rightArm: { x: 0.3, y: 0.1, z: 0.45 },
-    rightForearm: { x: 1.4, y: 0.3, z: -0.6 },
-    rightHand: { x: 0.1, y: -0.2, z: 0.1 },
-    rightFingers: {
+    }),
+  U: fs({
       thumb: [0.9, 0.1],
       index: [0.0, 0.0],
       middle: [0.0, 0.0],
       ring: [1.5, 1.4],
       pinky: [1.5, 1.4],
-    },
-  },
-  V: {
-    rightArm: { x: 0.3, y: 0.1, z: 0.45 },
-    rightForearm: { x: 1.4, y: 0.3, z: -0.6 },
-    rightHand: { x: 0.1, y: -0.2, z: 0.1 },
-    rightFingers: HAND_SHAPES.V_SHAPE,
-  },
-  W: {
-    rightArm: { x: 0.3, y: 0.1, z: 0.45 },
-    rightForearm: { x: 1.4, y: 0.3, z: -0.6 },
-    rightHand: { x: 0.1, y: -0.2, z: 0.1 },
-    rightFingers: HAND_SHAPES.W_SHAPE,
-  },
-  X: {
-    rightArm: { x: 0.3, y: 0.1, z: 0.45 },
-    rightForearm: { x: 1.4, y: 0.3, z: -0.6 },
-    rightHand: { x: 0.1, y: -0.2, z: 0.1 },
-    rightFingers: {
+    }),
+  V: fs(HAND_SHAPES.V_SHAPE),
+  W: fs(HAND_SHAPES.W_SHAPE),
+  X: fs({
       thumb: [0.8, 0.1],
       index: [0.8, 0.9], // hooked index
       middle: [1.5, 1.4],
       ring: [1.5, 1.4],
       pinky: [1.5, 1.4],
-    },
-  },
-  Y: {
-    rightArm: { x: 0.3, y: 0.1, z: 0.45 },
-    rightForearm: { x: 1.4, y: 0.3, z: -0.6 },
-    rightHand: { x: 0.1, y: -0.2, z: 0.1 },
-    rightFingers: HAND_SHAPES.Y_SHAPE,
-  },
-  Z: {
-    rightArm: { x: 0.3, y: 0.1, z: 0.45 },
-    rightForearm: { x: 1.4, y: 0.3, z: -0.6 },
-    rightHand: { x: 0.2, y: -0.4, z: 0.2 },
-    rightFingers: HAND_SHAPES.INDEX_POINT,
-  },
+    }),
+  Y: fs(HAND_SHAPES.Y_SHAPE),
+  Z: fs(HAND_SHAPES.INDEX_POINT),
 };
 
 // Core Vocabulary Keyframe Sequences
@@ -1018,6 +911,19 @@ export const POSES = {
     },
   ],
 };
+
+// The hand-authored keyframes above place the arms low (hands around the waist). Real signs are
+// made in "signing space" between chest and chin, so every keyframe's upper-arm flexion is raised
+// by SIGN_LIFT radians. Checked with a forward-kinematics pass over all 18 clips: wrists end up
+// at chest-to-chin height (y ~0.4-0.6, fingertips higher) and none intersect the torso.
+const SIGN_LIFT = 0.7;
+for (const keyframes of Object.values(POSES)) {
+  for (const kf of keyframes) {
+    for (const side of ["leftArm", "rightArm"]) {
+      if (kf[side]) kf[side] = { ...kf[side], x: kf[side].x + SIGN_LIFT };
+    }
+  }
+}
 
 // Helper: Linear interpolation for joint rotation objects
 export function lerpRotation(a, b, t) {

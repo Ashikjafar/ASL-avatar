@@ -345,6 +345,19 @@ body::before {
   cursor: grabbing;
 }
 
+/* The app theme is light, but the 3D stage (and its HUD) is dark. Re-map the tokens inside the
+   stage so HUD text/borders are readable instead of dark-on-dark. */
+.avatar-stage {
+  --text-pure: #f8fafc;
+  --text-main: #e2e8f0;
+  --text-muted: #cbd5e1;
+  --text-dim: #94a3b8;
+  --accent-cyan: #38bdf8;
+  --accent-amber: #fbbf24;
+  --surface-border: rgba(255, 255, 255, 0.16);
+  --glow-cyan: 0 0 14px rgba(56, 189, 248, 0.35);
+}
+
 /* Stage Lighting Ambiance Themes */
 .avatar-stage.theme-cyan {
   background: radial-gradient(circle at 50% 30%, #112534 0%, #080d14 75%);
