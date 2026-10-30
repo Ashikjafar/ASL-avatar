@@ -24,7 +24,7 @@ export function saveHistory(list) {
   }
 }
 
-export function makeEntry({ text, source, tokens, unmapped = [] }) {
+export function makeEntry({ text, source, tokens, unmapped = [], translatedText = "" }) {
   return {
     id: `${Date.now()}-${Math.random().toString(36).slice(2, 7)}`,
     text,
@@ -32,5 +32,6 @@ export function makeEntry({ text, source, tokens, unmapped = [] }) {
     at: new Date().toISOString(),
     tokens,
     unmapped,
+    translatedText,
   };
 }

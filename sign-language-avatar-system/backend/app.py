@@ -14,6 +14,7 @@ from pydantic import BaseModel
 import uvicorn
 
 from gloss_generator import GlossGenerator, generate_gloss
+import translator
 
 # Configure Logging
 logging.basicConfig(level=logging.INFO, format="%(asctime)s [%(levelname)s] %(message)s")
@@ -75,10 +76,20 @@ async def translate_text(req: TranslateRequest):
     if not req.text or not req.text.strip():
         raise HTTPException(status_code=400, detail="Text field cannot be empty.")
     
-    tokens, unmapped = generator.translate(req.text)
+    # Non-English input is translated to English first, because signs exist
+    # for English glosses only. If translation is unavailable we fall back to
+    # the built-in Hindi/Tamil lexicon on the original text.
+    english, provider = translator.translate_to_english(req.text, req.language)
+    tokens, unmapped = generator.translate(english)
+    if not tokens and english != req.text:
+        tokens, unmapped = generator.translate(req.text)
+        provider = "unavailable"
     gloss_list = [t["gloss"] for t in tokens]
     return {
         "text": req.text,
+        "translated_text": english,
+        "source_language": req.language,
+        "translation_provider": provider,
         "gloss": gloss_list,
         "tokens": tokens,
         "sequence": tokens,

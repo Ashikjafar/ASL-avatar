@@ -12,11 +12,17 @@ import { useEffect, useRef, useState } from "react";
  * - Comprehensive error handling for mic permissions (not-allowed), network, and silence.
  * - Added audio visualizer and language selection.
  */
-export default function SpeechCapture({ onFinalText, onInterimText, onListeningChange }) {
+export default function SpeechCapture({ onFinalText, onInterimText, onListeningChange, language, onLanguageChange }) {
   const [listening, setListening] = useState(false);
   const [supported, setSupported] = useState(true);
   const [errorMessage, setErrorMessage] = useState("");
-  const [selectedLang, setSelectedLang] = useState("en-US");
+  // Language can be controlled by the parent (so typed input shares it) or local.
+  const [localLang, setLocalLang] = useState("en-US");
+  const selectedLang = language ?? localLang;
+  const setSelectedLang = (v) => {
+    setLocalLang(v);
+    onLanguageChange?.(v);
+  };
 
   const recognitionRef = useRef(null);
   const isListeningRef = useRef(false);
@@ -65,7 +71,7 @@ export default function SpeechCapture({ onFinalText, onInterimText, onListeningC
         if (item.isFinal) {
           const finalClean = transcript.trim();
           if (finalClean) {
-            onFinalTextRef.current?.(finalClean);
+            onFinalTextRef.current?.(finalClean, recognition.lang);
           }
         } else {
           interim += transcript;

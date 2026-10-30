@@ -52,6 +52,8 @@ export default function App() {
   const queueRef = useRef([]);
   const [transcript, setTranscript] = useState("");
   const [interim, setInterim] = useState("");
+  const [lang, setLang] = useState("en-US"); // input language (speech + typed)
+  const [translateNote, setTranslateNote] = useState("");
   const [listening, setListening] = useState(false);
   const [history, setHistory] = useState([]);
   const [sessions, setSessions] = useState(loadHistory); // persistent phrase history
@@ -86,9 +88,10 @@ export default function App() {
     return () => clearInterval(interval);
   }, []);
 
-  const queueSignsFromText = async (text, source = "voice") => {
+  const queueSignsFromText = async (text, source = "voice", language = lang) => {
     let items = [];
     let unmapped = [];
+    let translatedText = "";
 
     // Try backend translation first if available
     if (backendOnline) {
@@ -96,13 +99,16 @@ export default function App() {
         const res = await fetch(`${API}/api/translate`, {
           method: "POST",
           headers: { "Content-Type": "application/json" },
-          body: JSON.stringify({ text }),
+          body: JSON.stringify({ text, language }),
         });
         if (res.ok) {
           const data = await res.json();
           if (data.tokens && data.tokens.length > 0) {
             items = data.tokens;
             unmapped = data.unmapped || [];
+            if (data.translation_provider === "mymemory") translatedText = data.translated_text || "";
+            else if (!language.startsWith("en")) setTranslateNote("Translation unavailable - used built-in word list");
+            else setTranslateNote("");
           }
         }
       } catch (e) {
@@ -118,7 +124,8 @@ export default function App() {
 
     // Push into the avatar's animation queue
     queueRef.current.push(...items);
-    addSession({ text, source, tokens: items, unmapped });
+    if (translatedText) setTranslateNote(`${language.split("-")[0].toUpperCase()} → EN: ${translatedText}`);
+    addSession({ text, source, tokens: items, unmapped, translatedText });
 
     // Record in history log
     items.forEach((item) => {
@@ -134,11 +141,11 @@ export default function App() {
     });
   };
 
-  const handleFinalSpeech = (text) => {
+  const handleFinalSpeech = (text, speechLang) => {
     if (!text) return;
     setTranscript((prev) => (prev ? prev + " " + text : text));
     setInterim("");
-    queueSignsFromText(text, "voice");
+    queueSignsFromText(text, "voice", speechLang || lang);
   };
 
   const handleManualSubmit = (e) => {
@@ -364,7 +371,12 @@ export default function App() {
                   onFinalText={handleFinalSpeech}
                   onInterimText={setInterim}
                   onListeningChange={setListening}
+                  language={lang}
+                  onLanguageChange={setLang}
                 />
+                {translateNote && (
+                  <p className="card-subheading" role="status" data-testid="translate-note" style={{ marginTop: 8 }}>{translateNote}</p>
+                )}
               </div>
 
               {/* LIVE TRANSCRIPT TERMINAL */}
